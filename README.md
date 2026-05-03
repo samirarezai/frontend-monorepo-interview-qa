@@ -582,7 +582,36 @@ pnpm exec tsc -b apps/web
 
 ### <span style="color:#0969da">Q:</span> Ship library as **source** vs **pre-built `dist/`**?
 
-**A:**
+**A:** These words describe **what the app imports from `@acme/ui`**, not whether you have a Git repo.
+
+- **Source:** The library’s **TypeScript / JSX / Vue SFCs** (under `src/`) are the product. The **host app’s bundler** (Vite, Webpack, Next, etc.) reads those files and **transpiles** them together with the app. There is often **no compiled `dist/`** in day-to-day dev, or it is unused for workspace links. Think: “the app compiles the sibling package as if it were part of the app.”
+
+```json
+// packages/ui/package.json (workspace sketch: entry points at source)
+{
+  "name": "@acme/ui",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
+```
+
+- **Pre-built:** The library runs its own **`build`** step (`tsc`, `tsup`, Rollup, `ng-packagr`, …) and ships **compiled JS** (and usually **`.d.ts`**) under `dist/` (or `lib/`). The app imports **already-built files**; the app bundler does not re-compile the library’s TS/JSX. Think: “the package is a small npm product with a `dist/` contract.”
+
+```json
+// packages/ui/package.json (sketch: entry points at build output)
+{
+  "name": "@acme/ui",
+  "files": ["dist"],
+  "scripts": { "build": "tsup src/index.ts --format esm --dts" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  }
+}
+```
 
 | Approach | Pros | Cons |
 |----------|------|------|
