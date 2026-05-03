@@ -372,7 +372,29 @@ See **Reference** for a root **`workspaces`** array, **`pnpm-workspace.yaml`**, 
 
 - **npm workspaces:** Built-in; hoisting behavior familiar to npm users; good defaults for smaller repos.
 - **Yarn (Berry/classic) workspaces:** Mature; Plug’n’Play (PnP) in Yarn 2+ avoids `node_modules` entirely - stricter resolution, different DX and tooling compatibility story.
-- **pnpm workspaces:** **Content-addressable store** + symlinked `node_modules`; **stricter** dependency visibility; excellent for large monorepos and deduplication.
+- **pnpm workspaces:** **Content-addressable store** + **symlink-based `node_modules`**. A **symlink** (symbolic link) is a filesystem entry that **points to** another folder instead of holding a full copy of the files. pnpm keeps the real package files in a shared store; each project’s `node_modules` is mostly **links** into that store. That saves disk and enables **stricter** dependency visibility; excellent for large monorepos and deduplication.
+
+**Example (simplified layout):** Your app still has `node_modules/react`, but that folder is a **link** into `.pnpm`, where the real files live once per version (so two apps using `react@18` can share one copy on disk).
+
+```text
+apps/web/node_modules
+├── .pnpm/                                    # virtual store (exact shape varies by pnpm version)
+│   └── react@18.3.1/node_modules/react/      # actual package files (index.js, package.json, …)
+└── react -> .pnpm/react@18.3.1/node_modules/react   # symlink: "react" is a pointer, not a duplicate tree
+```
+
+Inspect it on disk (symlink shows as `l` in the first column on Unix; Windows `dir` shows `<SYMLINKD>` / `JUNCTION`):
+
+```bash
+cd apps/web
+ls -la node_modules/react          # macOS / Linux / Git Bash
+# react -> .pnpm/react@18.3.1/node_modules/react
+```
+
+```powershell
+# Windows PowerShell (example)
+Get-Item .\node_modules\react | Format-List LinkType, Target
+```
 
 **Senior:** Choice affects **CI cache keys**, **Docker layer caching**, and **compatibility** with tools that assume classic `node_modules` layout.
 
@@ -451,6 +473,29 @@ export default [
 **A:** Packages only see **declared dependencies** (plus their own subtree), not everything hoisted to the root. That surfaces missing declarations early - **good for correctness** - but can require fixing undeclared deps when migrating from npm/Yarn classic.
 
 **Senior:** pnpm’s layout is **stricter** than npm’s flat tree. A few tools still assume “everything is visible from everywhere” and then break. **`public-hoist-pattern`** lifts only the package names you list to a flatter place. **`shamefully-hoist`** lifts much more (almost like npm) so stubborn tools can find deps. Use either to **unblock** a bad interaction, but treat it as a **workaround**: upgrade or patch the tool, or fix missing declarations, instead of leaving hoisting on forever.
+
+pnpm reads these from **`.npmrc`** (repo root is typical; `~/.npmrc` also applies). Check [pnpm `.npmrc` docs](https://pnpm.io/npmrc) for your major version in case names change.
+
+**`public-hoist-pattern` (surgical):** repeat one line per glob; only matching dependency **names** get hoisted flatter so legacy tools can resolve them.
+
+```ini
+# .npmrc (example - adjust globs to the package that breaks)
+public-hoist-pattern[]=*eslint*
+public-hoist-pattern[]=*webpack*
+```
+
+**`shamefully-hoist` (broad):** one boolean; hoists **most** dependencies toward the root of `node_modules`, closest to classic npm behavior among pnpm escape hatches.
+
+```ini
+# .npmrc (example - last resort while you fix tooling)
+shamefully-hoist=true
+```
+
+CLI equivalent (writes the same setting into `.npmrc` or user config):
+
+```bash
+pnpm config set shamefully-hoist true --location=project   # writes repo .npmrc (pnpm 8+)
+```
 
 ---
 
